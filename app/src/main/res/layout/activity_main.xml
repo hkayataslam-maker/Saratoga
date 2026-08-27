@@ -45,6 +45,12 @@
     android:layout_height="wrap_content"
     android:text="🔍 البحث عن التركيبة"
     android:layout_marginTop="10dp" />
+        <Button
+    android:id="@+id/addRecipeButton"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:text="➕ إضافة تركيبة جديدة"
+    android:layout_marginTop="10dp" />
 
         <Button
             android:id="@+id/saveButton"
