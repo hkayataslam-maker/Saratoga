@@ -7,7 +7,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:padding="24dp">
+        android:padding="20dp">
 
         <TextView
             android:layout_width="match_parent"
@@ -16,15 +16,14 @@
             android:textSize="32sp"
             android:textStyle="bold"
             android:gravity="center"
-            android:layout_marginBottom="30dp" />
+            android:layout_marginBottom="25dp" />
 
         <EditText
             android:id="@+id/colorCode"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="اكتب كود اللون"
-            android:inputType="number"
-            android:padding="15dp" />
+            android:hint="كود اللون"
+            android:inputType="number" />
 
         <EditText
             android:id="@+id/tankWeight"
@@ -32,15 +31,21 @@
             android:layout_height="wrap_content"
             android:hint="وزن الحوض بالكيلو"
             android:inputType="numberDecimal"
-            android:padding="15dp"
-            android:layout_marginTop="15dp" />
+            android:layout_marginTop="12dp" />
 
         <Button
             android:id="@+id/calculateButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="احسب التركيبة"
-            android:layout_marginTop="25dp" />
+            android:layout_marginTop="18dp" />
+
+        <Button
+            android:id="@+id/saveButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="💾 حفظ التركيبة"
+            android:layout_marginTop="10dp" />
 
         <TextView
             android:id="@+id/result"
@@ -48,7 +53,7 @@
             android:layout_height="wrap_content"
             android:text=""
             android:textSize="18sp"
-            android:padding="20dp"
+            android:padding="15dp"
             android:layout_marginTop="20dp" />
 
     </LinearLayout>
