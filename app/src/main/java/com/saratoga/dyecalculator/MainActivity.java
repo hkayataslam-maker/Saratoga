@@ -15,6 +15,7 @@ public class MainActivity extends AppCompatActivity {
     EditText tankWeight;
     Button calculateButton;
     Button saveButton;
+    Button searchButton;
     TextView result;
 
     SharedPreferences preferences;
@@ -28,13 +29,14 @@ public class MainActivity extends AppCompatActivity {
         tankWeight = findViewById(R.id.tankWeight);
         calculateButton = findViewById(R.id.calculateButton);
         saveButton = findViewById(R.id.saveButton);
+        searchButton = findViewById(R.id.searchButton);
         result = findViewById(R.id.result);
 
         preferences = getSharedPreferences("SaratogaRecipes", MODE_PRIVATE);
 
         calculateButton.setOnClickListener(v -> calculateRecipe());
-
         saveButton.setOnClickListener(v -> saveRecipe());
+        searchButton.setOnClickListener(v -> searchRecipe());
     }
 
     private void calculateRecipe() {
@@ -100,7 +102,38 @@ public class MainActivity extends AppCompatActivity {
         Toast.makeText(this, "تم حفظ تركيبة 557 بنجاح ✅", Toast.LENGTH_SHORT).show();
     }
 
+    private void searchRecipe() {
+
+        String code = colorCode.getText().toString().trim();
+
+        if (code.isEmpty()) {
+            result.setText("اكتب كود اللون للبحث");
+            return;
+        }
+
+        if (code.equals("557")) {
+
+            String savedCode = preferences.getString("code_557", "");
+
+            if (savedCode.isEmpty()) {
+                result.setText("التركيبة 557 غير محفوظة");
+                return;
+            }
+
+            result.setText(
+                    "🔍 التركيبة المحفوظة\n\n" +
+                    "كود اللون: 557\n\n" +
+                    "بيج: 150 جم / 100 كجم\n" +
+                    "بني محروق: 50 جم / 100 كجم\n" +
+                    "أصفر: 3.8 جم / 100 كجم"
+            );
+
+        } else {
+            result.setText("لم يتم العثور على التركيبة");
+        }
+    }
+
     private String format(double number) {
         return String.format("%.2f", number);
     }
-        }
+    }
