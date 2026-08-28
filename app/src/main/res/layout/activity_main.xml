@@ -39,18 +39,27 @@
             android:layout_height="wrap_content"
             android:text="احسب التركيبة"
             android:layout_marginTop="18dp" />
+
         <Button
-    android:id="@+id/searchButton"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:text="🔍 البحث عن التركيبة"
-    android:layout_marginTop="10dp" />
+            android:id="@+id/searchButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🔍 البحث عن التركيبة"
+            android:layout_marginTop="10dp" />
+
         <Button
-    android:id="@+id/addRecipeButton"
-    android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:text="➕ إضافة تركيبة جديدة"
-    android:layout_marginTop="10dp" />
+            android:id="@+id/addRecipeButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="➕ إضافة تركيبة جديدة"
+            android:layout_marginTop="10dp" />
+
+        <Button
+            android:id="@+id/cameraButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📷 تصوير ورقة التركيبة"
+            android:layout_marginTop="10dp" />
 
         <Button
             android:id="@+id/saveButton"
@@ -59,13 +68,11 @@
             android:text="💾 حفظ التركيبة"
             android:layout_marginTop="10dp" />
 
-        <TextView
-            android:id="@+id/result"
+        <LinearLayout
+            android:id="@+id/resultsContainer"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text=""
-            android:textSize="18sp"
-            android:padding="15dp"
+            android:orientation="vertical"
             android:layout_marginTop="20dp" />
 
     </LinearLayout>
