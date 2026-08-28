@@ -4,7 +4,9 @@ import android.app.AlertDialog;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.text.Editable;
 import android.text.InputType;
+import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -33,6 +35,9 @@ public class MainActivity extends AppCompatActivity {
 
     SharedPreferences preferences;
 
+    // لمنع إعادة الحساب أثناء تحديث واجهة النتيجة
+    private boolean isUpdating = false;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -51,17 +56,91 @@ public class MainActivity extends AppCompatActivity {
                 MODE_PRIVATE
         );
 
+        // زر الحساب ما زال موجود ويعمل
         calculateButton.setOnClickListener(v -> calculateRecipe());
+
         saveButton.setOnClickListener(v -> saveCurrentRecipe());
+
         searchButton.setOnClickListener(v -> searchRecipe());
+
         addRecipeButton.setOnClickListener(v -> showAddRecipeDialog());
+
+        // ==========================================
+        // الحساب التلقائي عند تغيير وزن الحوض
+        // ==========================================
+
+        tankWeight.addTextChangedListener(new TextWatcher() {
+
+            @Override
+            public void beforeTextChanged(
+                    CharSequence s,
+                    int start,
+                    int count,
+                    int after
+            ) {
+            }
+
+            @Override
+            public void onTextChanged(
+                    CharSequence s,
+                    int start,
+                    int before,
+                    int count
+            ) {
+
+                if (!isUpdating) {
+                    calculateAutomatically();
+                }
+            }
+
+            @Override
+            public void afterTextChanged(
+                    Editable s
+            ) {
+            }
+        });
+
+        // ==========================================
+        // الحساب التلقائي عند تغيير كود اللون
+        // ==========================================
+
+        colorCode.addTextChangedListener(new TextWatcher() {
+
+            @Override
+            public void beforeTextChanged(
+                    CharSequence s,
+                    int start,
+                    int count,
+                    int after
+            ) {
+            }
+
+            @Override
+            public void onTextChanged(
+                    CharSequence s,
+                    int start,
+                    int before,
+                    int count
+            ) {
+
+                if (!isUpdating) {
+                    calculateAutomatically();
+                }
+            }
+
+            @Override
+            public void afterTextChanged(
+                    Editable s
+            ) {
+            }
+        });
     }
 
-    // =========================
-    // حساب التركيبة
-    // =========================
+    // =====================================================
+    // الحساب التلقائي
+    // =====================================================
 
-    private void calculateRecipe() {
+    private void calculateAutomatically() {
 
         String code = colorCode.getText()
                 .toString()
@@ -71,31 +150,24 @@ public class MainActivity extends AppCompatActivity {
                 .toString()
                 .trim();
 
-        if (code.isEmpty()) {
-            result.setText("اكتب كود اللون أولًا");
-            return;
-        }
-
-        if (weightText.isEmpty()) {
-            result.setText("اكتب وزن الحوض أولًا");
+        // لو إحدى الخانتين فاضية، لا تعمل حساب
+        if (code.isEmpty() || weightText.isEmpty()) {
             return;
         }
 
         double tank;
 
         try {
+
             tank = Double.parseDouble(
                     weightText.replace(",", ".")
             );
+
         } catch (Exception e) {
-            result.setText("وزن الحوض غير صحيح");
             return;
         }
 
         if (tank <= 0) {
-            result.setText(
-                    "وزن الحوض يجب أن يكون أكبر من صفر"
-            );
             return;
         }
 
@@ -110,10 +182,12 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (recipe.isEmpty()) {
+
             result.setText(
                     "كود اللون " + code +
                             " غير موجود حاليًا"
             );
+
             return;
         }
 
@@ -136,9 +210,106 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // =========================
+    // =====================================================
+    // حساب التركيبة بالزر
+    // =====================================================
+
+    private void calculateRecipe() {
+
+        String code = colorCode.getText()
+                .toString()
+                .trim();
+
+        String weightText = tankWeight.getText()
+                .toString()
+                .trim();
+
+        if (code.isEmpty()) {
+
+            result.setText(
+                    "اكتب كود اللون أولًا"
+            );
+
+            return;
+        }
+
+        if (weightText.isEmpty()) {
+
+            result.setText(
+                    "اكتب وزن الحوض أولًا"
+            );
+
+            return;
+        }
+
+        double tank;
+
+        try {
+
+            tank = Double.parseDouble(
+                    weightText.replace(",", ".")
+            );
+
+        } catch (Exception e) {
+
+            result.setText(
+                    "وزن الحوض غير صحيح"
+            );
+
+            return;
+        }
+
+        if (tank <= 0) {
+
+            result.setText(
+                    "وزن الحوض يجب أن يكون أكبر من صفر"
+            );
+
+            return;
+        }
+
+        String recipe = preferences.getString(
+                "recipe_" + code,
+                ""
+        );
+
+        // تركيبة 557 الافتراضية
+        if (recipe.isEmpty() && code.equals("557")) {
+            recipe = createDefault557();
+        }
+
+        if (recipe.isEmpty()) {
+
+            result.setText(
+                    "كود اللون " + code +
+                            " غير موجود حاليًا"
+            );
+
+            return;
+        }
+
+        try {
+
+            JSONArray colors =
+                    new JSONArray(recipe);
+
+            showCalculatedResult(
+                    code,
+                    tank,
+                    colors
+            );
+
+        } catch (Exception e) {
+
+            result.setText(
+                    "حدث خطأ في قراءة التركيبة"
+            );
+        }
+    }
+
+    // =====================================================
     // عرض النتيجة
-    // =========================
+    // =====================================================
 
     private void showCalculatedResult(
             String code,
@@ -173,6 +344,7 @@ public class MainActivity extends AppCompatActivity {
         );
 
         title.setTextSize(21);
+
         title.setTextColor(
                 Color.rgb(30, 30, 30)
         );
@@ -198,6 +370,7 @@ public class MainActivity extends AppCompatActivity {
         );
 
         subtitle.setTextSize(18);
+
         subtitle.setGravity(
                 Gravity.CENTER
         );
@@ -211,9 +384,11 @@ public class MainActivity extends AppCompatActivity {
 
         container.addView(subtitle);
 
-        for (int i = 0;
-             i < colors.length();
-             i++) {
+        for (
+                int i = 0;
+                i < colors.length();
+                i++
+        ) {
 
             JSONObject item =
                     colors.getJSONObject(i);
@@ -223,6 +398,12 @@ public class MainActivity extends AppCompatActivity {
 
             double baseWeight =
                     item.getDouble("weight");
+
+            // ==========================================
+            // الحساب:
+            // التركيبة الأصلية لكل 100 كجم
+            // الكمية المطلوبة = الوزن الأصلي × وزن الحوض ÷ 100
+            // ==========================================
 
             double calculated =
                     baseWeight * tank / 100.0;
@@ -234,6 +415,7 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
+        // استبدال النتيجة القديمة بالنتيجة الجديدة
         result.setText("");
 
         ViewGroup parent =
@@ -250,9 +432,9 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
-    // =========================
+    // =====================================================
     // كارت الصبغة
-    // =========================
+    // =====================================================
 
     private void addColorCard(
             LinearLayout container,
@@ -285,11 +467,11 @@ public class MainActivity extends AppCompatActivity {
                 backgroundColor
         );
 
-        // اسم الصبغة
         TextView nameView =
                 new TextView(this);
 
         nameView.setText(name);
+
         nameView.setTextSize(19);
 
         nameView.setTextColor(
@@ -300,7 +482,6 @@ public class MainActivity extends AppCompatActivity {
                 Gravity.CENTER_VERTICAL
         );
 
-        // الوزن
         TextView weightView =
                 new TextView(this);
 
@@ -369,9 +550,9 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
-    // =========================
-    // تحديد لون الصبغة
-    // =========================
+    // =====================================================
+    // ألوان الصبغات
+    // =====================================================
 
     private int getColorFromName(
             String originalName
@@ -382,10 +563,8 @@ public class MainActivity extends AppCompatActivity {
                         .toLowerCase(Locale.ROOT)
                         .trim();
 
-        // أحمر
         if (name.contains("احمر") ||
-                name.contains("أحمر") ||
-                name.contains("احمر")) {
+                name.contains("أحمر")) {
 
             return Color.rgb(
                     220,
@@ -394,7 +573,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // أصفر
         if (name.contains("اصفر") ||
                 name.contains("أصفر") ||
                 name.contains("yellow")) {
@@ -406,7 +584,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // أخضر
         if (name.contains("اخضر") ||
                 name.contains("أخضر") ||
                 name.contains("green")) {
@@ -418,7 +595,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // أزرق
         if (name.contains("ازرق") ||
                 name.contains("أزرق") ||
                 name.contains("blue")) {
@@ -430,7 +606,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // تركواز
         if (name.contains("تركواز") ||
                 name.contains("turquoise")) {
 
@@ -441,7 +616,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // بني
         if (name.contains("بني") ||
                 name.contains("brown")) {
 
@@ -452,7 +626,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // بيج
         if (name.contains("بيج") ||
                 name.contains("beige")) {
 
@@ -463,7 +636,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // أسود
         if (name.contains("اسود") ||
                 name.contains("أسود") ||
                 name.contains("black")) {
@@ -475,7 +647,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // أبيض
         if (name.contains("ابيض") ||
                 name.contains("أبيض") ||
                 name.contains("white")) {
@@ -487,7 +658,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // موف
         if (name.contains("موف") ||
                 name.contains("mauve") ||
                 name.contains("purple")) {
@@ -499,9 +669,7 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // فوشيا
         if (name.contains("فوشيا") ||
-                name.contains("فوشيا") ||
                 name.contains("fuchsia")) {
 
             return Color.rgb(
@@ -511,7 +679,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // وردي
         if (name.contains("وردي") ||
                 name.contains("pink")) {
 
@@ -522,9 +689,7 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // برتقالي
         if (name.contains("برتقالي") ||
-                name.contains("برتقالي") ||
                 name.contains("orange")) {
 
             return Color.rgb(
@@ -534,7 +699,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // رمادي
         if (name.contains("رمادي") ||
                 name.contains("رصاصي") ||
                 name.contains("grey") ||
@@ -547,7 +711,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // كحلي
         if (name.contains("كحلي") ||
                 name.contains("navy")) {
 
@@ -558,7 +721,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // زيتي
         if (name.contains("زيتي") ||
                 name.contains("olive")) {
 
@@ -569,7 +731,6 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        // لو البرنامج مش عارف اللون
         return Color.rgb(
                 90,
                 90,
@@ -577,9 +738,9 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
-    // =========================
-    // لون الكتابة حسب الخلفية
-    // =========================
+    // =====================================================
+    // لون الكتابة
+    // =====================================================
 
     private int getTextColor(
             int background
@@ -609,9 +770,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // =========================
+    // =====================================================
     // إضافة تركيبة
-    // =========================
+    // =====================================================
 
     private void showAddRecipeDialog() {
 
@@ -912,9 +1073,9 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    // =========================
+    // =====================================================
     // حفظ التركيبة الحالية
-    // =========================
+    // =====================================================
 
     private void saveCurrentRecipe() {
 
@@ -981,9 +1142,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // =========================
+    // =====================================================
     // البحث
-    // =========================
+    // =====================================================
 
     private void searchRecipe() {
 
@@ -1089,9 +1250,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // =========================
+    // =====================================================
     // التركيبة الافتراضية 557
-    // =========================
+    // =====================================================
 
     private String createDefault557() {
 
@@ -1159,9 +1320,9 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // =========================
+    // =====================================================
     // تنسيق الأرقام
-    // =========================
+    // =====================================================
 
     private String format(
             double number
@@ -1185,4 +1346,4 @@ public class MainActivity extends AppCompatActivity {
                 number
         );
     }
-                }
+    }
