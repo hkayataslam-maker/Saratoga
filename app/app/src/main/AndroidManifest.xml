@@ -5,6 +5,8 @@
         android:allowBackup="true"
         android:label="Saratoga"
         android:icon="@drawable/saratoga"
+android:roundIcon="@drawable/saratoga"
+        android:icon="@drawable/saratoga"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar">
 
