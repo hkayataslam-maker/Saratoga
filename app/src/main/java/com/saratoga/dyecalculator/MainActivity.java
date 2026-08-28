@@ -1,139 +1,910 @@
 package com.saratoga.dyecalculator;
 
+import android.Manifest;
 import android.app.AlertDialog;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.text.Editable;
 import android.text.InputType;
 import android.text.TextWatcher;
 import android.view.Gravity;
 import android.view.View;
-import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
+import com.google.mlkit.vision.common.InputImage;
+import com.google.mlkit.vision.text.Text;
+import com.google.mlkit.vision.text.TextRecognition;
+import com.google.mlkit.vision.text.TextRecognizer;
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.util.ArrayList;
 import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class MainActivity extends AppCompatActivity {
 
     EditText colorCode;
     EditText tankWeight;
+
     Button calculateButton;
     Button saveButton;
     Button searchButton;
     Button addRecipeButton;
-    TextView result;
+    Button cameraButton;
+
+    LinearLayout resultsContainer;
 
     SharedPreferences preferences;
 
-    // لمنع إعادة الحساب أثناء تحديث واجهة النتيجة
-    private boolean isUpdating = false;
+    private static final int CAMERA_REQUEST = 1001;
+    private static final int CAMERA_PERMISSION_REQUEST = 1002;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
         setContentView(R.layout.activity_main);
 
         colorCode = findViewById(R.id.colorCode);
         tankWeight = findViewById(R.id.tankWeight);
+
         calculateButton = findViewById(R.id.calculateButton);
         saveButton = findViewById(R.id.saveButton);
         searchButton = findViewById(R.id.searchButton);
         addRecipeButton = findViewById(R.id.addRecipeButton);
-        result = findViewById(R.id.result);
+        cameraButton = findViewById(R.id.cameraButton);
 
-        preferences = getSharedPreferences(
-                "SaratogaRecipes",
-                MODE_PRIVATE
+        resultsContainer =
+                findViewById(R.id.resultsContainer);
+
+        preferences =
+                getSharedPreferences(
+                        "SaratogaRecipes",
+                        MODE_PRIVATE
+                );
+
+        calculateButton.setOnClickListener(
+                v -> calculateRecipe()
         );
 
-        // زر الحساب ما زال موجود ويعمل
-        calculateButton.setOnClickListener(v -> calculateRecipe());
+        saveButton.setOnClickListener(
+                v -> saveCurrentRecipe()
+        );
 
-        saveButton.setOnClickListener(v -> saveCurrentRecipe());
+        searchButton.setOnClickListener(
+                v -> searchRecipe()
+        );
 
-        searchButton.setOnClickListener(v -> searchRecipe());
+        addRecipeButton.setOnClickListener(
+                v -> showAddRecipeDialog()
+        );
 
-        addRecipeButton.setOnClickListener(v -> showAddRecipeDialog());
+        cameraButton.setOnClickListener(
+                v -> openCamera()
+        );
 
-        // ==========================================
-        // الحساب التلقائي عند تغيير وزن الحوض
-        // ==========================================
+        // تحديث تلقائي عند تغيير وزن الحوض
+        tankWeight.addTextChangedListener(
+                new TextWatcher() {
 
-        tankWeight.addTextChangedListener(new TextWatcher() {
+                    @Override
+                    public void beforeTextChanged(
+                            CharSequence s,
+                            int start,
+                            int count,
+                            int after
+                    ) {
+                    }
 
-            @Override
-            public void beforeTextChanged(
-                    CharSequence s,
-                    int start,
-                    int count,
-                    int after
+                    @Override
+                    public void onTextChanged(
+                            CharSequence s,
+                            int start,
+                            int before,
+                            int count
+                    ) {
+
+                        calculateAutomatically();
+                    }
+
+                    @Override
+                    public void afterTextChanged(
+                            Editable s
+                    ) {
+                    }
+                }
+        );
+
+        // تحديث تلقائي عند تغيير الكود
+        colorCode.addTextChangedListener(
+                new TextWatcher() {
+
+                    @Override
+                    public void beforeTextChanged(
+                            CharSequence s,
+                            int start,
+                            int count,
+                            int after
+                    ) {
+                    }
+
+                    @Override
+                    public void onTextChanged(
+                            CharSequence s,
+                            int start,
+                            int before,
+                            int count
+                    ) {
+
+                        calculateAutomatically();
+                    }
+
+                    @Override
+                    public void afterTextChanged(
+                            Editable s
+                    ) {
+                    }
+                }
+        );
+    }
+
+    // =====================================================
+    // الكاميرا
+    // =====================================================
+
+    private void openCamera() {
+
+        if (
+                ContextCompat.checkSelfPermission(
+                        this,
+                        Manifest.permission.CAMERA
+                )
+                        != PackageManager.PERMISSION_GRANTED
+        ) {
+
+            ActivityCompat.requestPermissions(
+                    this,
+                    new String[]{
+                            Manifest.permission.CAMERA
+                    },
+                    CAMERA_PERMISSION_REQUEST
+            );
+
+            return;
+        }
+
+        Intent intent =
+                new Intent(
+                        MediaStore.ACTION_IMAGE_CAPTURE
+                );
+
+        if (
+                intent.resolveActivity(
+                        getPackageManager()
+                ) != null
+        ) {
+
+            startActivityForResult(
+                    intent,
+                    CAMERA_REQUEST
+            );
+
+        } else {
+
+            Toast.makeText(
+                    this,
+                    "لا توجد كاميرا متاحة",
+                    Toast.LENGTH_SHORT
+            ).show();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            @NonNull String[] permissions,
+            @NonNull int[] grantResults
+    ) {
+
+        super.onRequestPermissionsResult(
+                requestCode,
+                permissions,
+                grantResults
+        );
+
+        if (
+                requestCode ==
+                        CAMERA_PERMISSION_REQUEST
+        ) {
+
+            if (
+                    grantResults.length > 0 &&
+                    grantResults[0] ==
+                            PackageManager.PERMISSION_GRANTED
             ) {
+
+                openCamera();
+
+            } else {
+
+                Toast.makeText(
+                        this,
+                        "لازم تسمح للتطبيق باستخدام الكاميرا",
+                        Toast.LENGTH_LONG
+                ).show();
+            }
+        }
+    }
+
+    @Override
+    protected void onActivityResult(
+            int requestCode,
+            int resultCode,
+            Intent data
+    ) {
+
+        super.onActivityResult(
+                requestCode,
+                resultCode,
+                data
+        );
+
+        if (
+                requestCode == CAMERA_REQUEST &&
+                resultCode == RESULT_OK &&
+                data != null
+        ) {
+
+            Bundle extras =
+                    data.getExtras();
+
+            if (extras != null) {
+
+                Bitmap bitmap =
+                        (Bitmap) extras.get("data");
+
+                if (bitmap != null) {
+
+                    readTextFromImage(bitmap);
+                }
+            }
+        }
+    }
+
+    // =====================================================
+    // OCR
+    // =====================================================
+
+    private void readTextFromImage(
+            Bitmap bitmap
+    ) {
+
+        Toast.makeText(
+                this,
+                "جاري قراءة ورقة التركيبة...",
+                Toast.LENGTH_SHORT
+        ).show();
+
+        InputImage image =
+                InputImage.fromBitmap(
+                        bitmap,
+                        0
+                );
+
+        TextRecognizer recognizer =
+                TextRecognition.getClient(
+                        TextRecognizerOptions.DEFAULT_OPTIONS
+                );
+
+        recognizer.process(image)
+
+                .addOnSuccessListener(
+                        visionText -> {
+
+                            String text =
+                                    visionText.getText();
+
+                            if (
+                                    text == null ||
+                                    text.trim().isEmpty()
+                            ) {
+
+                                Toast.makeText(
+                                        this,
+                                        "لم أستطع قراءة الورقة",
+                                        Toast.LENGTH_LONG
+                                ).show();
+
+                                return;
+                            }
+
+                            showRecognizedText(text);
+                        }
+                )
+
+                .addOnFailureListener(
+                        e -> {
+
+                            Toast.makeText(
+                                    this,
+                                    "حدث خطأ أثناء قراءة الصورة",
+                                    Toast.LENGTH_LONG
+                            ).show();
+                        }
+                );
+    }
+
+    // =====================================================
+    // عرض النص المقروء
+    // =====================================================
+
+    private void showRecognizedText(
+            String text
+    ) {
+
+        EditText textBox =
+                new EditText(this);
+
+        textBox.setText(text);
+
+        textBox.setGravity(
+                Gravity.TOP
+        );
+
+        textBox.setMinLines(8);
+
+        textBox.setInputType(
+                InputType.TYPE_CLASS_TEXT |
+                InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        );
+
+        LinearLayout layout =
+                new LinearLayout(this);
+
+        layout.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        layout.setPadding(
+                25,
+                10,
+                25,
+                10
+        );
+
+        TextView info =
+                new TextView(this);
+
+        info.setText(
+                "راجع النص المقروء وعدّل أي خطأ قبل الحفظ:"
+        );
+
+        info.setTextSize(17);
+
+        info.setPadding(
+                0,
+                0,
+                0,
+                15
+        );
+
+        layout.addView(info);
+
+        layout.addView(
+                textBox,
+                new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+        );
+
+        new AlertDialog.Builder(this)
+
+                .setTitle(
+                        "📷 نتيجة تصوير التركيبة"
+                )
+
+                .setView(layout)
+
+                .setPositiveButton(
+                        "استخراج البيانات",
+                        (dialog, which) -> {
+
+                            parseRecognizedText(
+                                    textBox.getText()
+                                            .toString()
+                            );
+                        }
+                )
+
+                .setNegativeButton(
+                        "إلغاء",
+                        null
+                )
+
+                .show();
+    }
+
+    // =====================================================
+    // استخراج الكود والأوزان
+    // =====================================================
+
+    private void parseRecognizedText(
+            String text
+    ) {
+
+        String[] lines =
+                text.split("\\r?\\n");
+
+        String detectedCode = "";
+
+        ArrayList<String> pigmentNames =
+                new ArrayList<>();
+
+        ArrayList<Double> pigmentWeights =
+                new ArrayList<>();
+
+        Pattern codePattern =
+                Pattern.compile(
+                        "\\b\\d{3,5}\\b"
+                );
+
+        Pattern numberPattern =
+                Pattern.compile(
+                        "(\\d+(?:[\\.,]\\d+)?)"
+                );
+
+        for (String line : lines) {
+
+            String clean =
+                    line.trim();
+
+            if (clean.isEmpty()) {
+                continue;
             }
 
-            @Override
-            public void onTextChanged(
-                    CharSequence s,
-                    int start,
-                    int before,
-                    int count
-            ) {
+            // البحث عن كود اللون
+            if (detectedCode.isEmpty()) {
 
-                if (!isUpdating) {
-                    calculateAutomatically();
+                Matcher codeMatcher =
+                        codePattern.matcher(clean);
+
+                if (codeMatcher.find()) {
+
+                    detectedCode =
+                            codeMatcher.group();
                 }
             }
 
-            @Override
-            public void afterTextChanged(
-                    Editable s
+            // البحث عن الوزن
+            Matcher numberMatcher =
+                    numberPattern.matcher(clean);
+
+            ArrayList<String> numbers =
+                    new ArrayList<>();
+
+            while (
+                    numberMatcher.find()
             ) {
-            }
-        });
 
-        // ==========================================
-        // الحساب التلقائي عند تغيير كود اللون
-        // ==========================================
-
-        colorCode.addTextChangedListener(new TextWatcher() {
-
-            @Override
-            public void beforeTextChanged(
-                    CharSequence s,
-                    int start,
-                    int count,
-                    int after
-            ) {
+                numbers.add(
+                        numberMatcher.group(1)
+                );
             }
 
-            @Override
-            public void onTextChanged(
-                    CharSequence s,
-                    int start,
-                    int before,
-                    int count
-            ) {
+            if (!numbers.isEmpty()) {
 
-                if (!isUpdating) {
-                    calculateAutomatically();
+                String lastNumber =
+                        numbers.get(
+                                numbers.size() - 1
+                        );
+
+                try {
+
+                    double weight =
+                            Double.parseDouble(
+                                    lastNumber.replace(
+                                            ",",
+                                            "."
+                                    )
+                            );
+
+                    // تجاهل الكود نفسه
+                    if (
+                            detectedCode.equals(
+                                    lastNumber
+                            )
+                    ) {
+                        continue;
+                    }
+
+                    String name =
+                            clean.replace(
+                                    lastNumber,
+                                    ""
+                            )
+                            .replace(
+                                    ":",
+                                    ""
+                            )
+                            .replace(
+                                    "-",
+                                    ""
+                            )
+                            .trim();
+
+                    // لو فيه اسم واضح
+                    if (
+                            !name.isEmpty() &&
+                            weight >= 0
+                    ) {
+
+                        pigmentNames.add(name);
+                        pigmentWeights.add(weight);
+                    }
+
+                } catch (Exception ignored) {
                 }
             }
+        }
 
-            @Override
-            public void afterTextChanged(
-                    Editable s
-            ) {
+        showExtractedDataDialog(
+                detectedCode,
+                pigmentNames,
+                pigmentWeights
+        );
+    }
+
+    // =====================================================
+    // مراجعة البيانات قبل الحفظ
+    // =====================================================
+
+    private void showExtractedDataDialog(
+            String detectedCode,
+            ArrayList<String> names,
+            ArrayList<Double> weights
+    ) {
+
+        LinearLayout layout =
+                new LinearLayout(this);
+
+        layout.setOrientation(
+                LinearLayout.VERTICAL
+        );
+
+        layout.setPadding(
+                25,
+                10,
+                25,
+                10
+        );
+
+        EditText codeInput =
+                new EditText(this);
+
+        codeInput.setHint(
+                "كود اللون"
+        );
+
+        codeInput.setInputType(
+                InputType.TYPE_CLASS_NUMBER
+        );
+
+        codeInput.setText(
+                detectedCode
+        );
+
+        layout.addView(
+                codeInput
+        );
+
+        int count =
+                Math.min(
+                        names.size(),
+                        4
+                );
+
+        EditText[] nameInputs =
+                new EditText[4];
+
+        EditText[] weightInputs =
+                new EditText[4];
+
+        for (
+                int i = 0;
+                i < 4;
+                i++
+        ) {
+
+            TextView title =
+                    new TextView(this);
+
+            title.setText(
+                    "الصبغة " + (i + 1)
+            );
+
+            title.setTextSize(16);
+
+            title.setPadding(
+                    0,
+                    15,
+                    0,
+                    5
+            );
+
+            layout.addView(title);
+
+            LinearLayout row =
+                    new LinearLayout(this);
+
+            row.setOrientation(
+                    LinearLayout.HORIZONTAL
+            );
+
+            nameInputs[i] =
+                    new EditText(this);
+
+            nameInputs[i].setHint(
+                    "اسم الصبغة"
+            );
+
+            nameInputs[i].setSingleLine(
+                    true
+            );
+
+            weightInputs[i] =
+                    new EditText(this);
+
+            weightInputs[i].setHint(
+                    "الوزن / 100 كجم"
+            );
+
+            weightInputs[i].setInputType(
+                    InputType.TYPE_CLASS_NUMBER |
+                    InputType.TYPE_NUMBER_FLAG_DECIMAL
+            );
+
+            weightInputs[i].setSingleLine(
+                    true
+            );
+
+            if (i < count) {
+
+                nameInputs[i].setText(
+                        names.get(i)
+                );
+
+                weightInputs[i].setText(
+                        format(
+                                weights.get(i)
+                        )
+                );
             }
-        });
+
+            LinearLayout.LayoutParams
+                    nameParams =
+                    new LinearLayout.LayoutParams(
+                            0,
+                            LinearLayout.LayoutParams
+                                    .WRAP_CONTENT,
+                            1
+                    );
+
+            nameParams.setMargins(
+                    0,
+                    0,
+                    10,
+                    0
+            );
+
+            LinearLayout.LayoutParams
+                    weightParams =
+                    new LinearLayout.LayoutParams(
+                            0,
+                            LinearLayout.LayoutParams
+                                    .WRAP_CONTENT,
+                            1
+                    );
+
+            row.addView(
+                    nameInputs[i],
+                    nameParams
+            );
+
+            row.addView(
+                    weightInputs[i],
+                    weightParams
+            );
+
+            layout.addView(row);
+        }
+
+        new AlertDialog.Builder(this)
+
+                .setTitle(
+                        "مراجعة التركيبة"
+                )
+
+                .setView(layout)
+
+                .setPositiveButton(
+                        "💾 حفظ",
+                        (dialog, which) -> {
+
+                            saveScannedRecipe(
+                                    codeInput,
+                                    nameInputs,
+                                    weightInputs
+                            );
+                        }
+                )
+
+                .setNegativeButton(
+                        "إلغاء",
+                        null
+                )
+
+                .show();
+    }
+
+    // =====================================================
+    // حفظ التركيبة المصورة
+    // =====================================================
+
+    private void saveScannedRecipe(
+            EditText codeInput,
+            EditText[] names,
+            EditText[] weights
+    ) {
+
+        String code =
+                codeInput.getText()
+                        .toString()
+                        .trim();
+
+        if (code.isEmpty()) {
+
+            Toast.makeText(
+                    this,
+                    "اكتب كود اللون",
+                    Toast.LENGTH_SHORT
+            ).show();
+
+            return;
+        }
+
+        try {
+
+            JSONArray recipe =
+                    new JSONArray();
+
+            for (
+                    int i = 0;
+                    i < 4;
+                    i++
+            ) {
+
+                String name =
+                        names[i].getText()
+                                .toString()
+                                .trim();
+
+                String weightText =
+                        weights[i].getText()
+                                .toString()
+                                .trim();
+
+                if (
+                        name.isEmpty() &&
+                        weightText.isEmpty()
+                ) {
+                    continue;
+                }
+
+                if (
+                        name.isEmpty() ||
+                        weightText.isEmpty()
+                ) {
+
+                    Toast.makeText(
+                            this,
+                            "أكمل بيانات الصبغة رقم " +
+                                    (i + 1),
+                            Toast.LENGTH_SHORT
+                    ).show();
+
+                    return;
+                }
+
+                double weight =
+                        Double.parseDouble(
+                                weightText.replace(
+                                        ",",
+                                        "."
+                                )
+                        );
+
+                if (weight < 0) {
+
+                    Toast.makeText(
+                            this,
+                            "الوزن غير صحيح",
+                            Toast.LENGTH_SHORT
+                    ).show();
+
+                    return;
+                }
+
+                JSONObject item =
+                        new JSONObject();
+
+                item.put(
+                        "name",
+                        name
+                );
+
+                item.put(
+                        "weight",
+                        weight
+                );
+
+                recipe.put(item);
+            }
+
+            if (recipe.length() == 0) {
+
+                Toast.makeText(
+                        this,
+                        "لم يتم العثور على صبغات",
+                        Toast.LENGTH_SHORT
+                ).show();
+
+                return;
+            }
+
+            preferences.edit()
+                    .putString(
+                            "recipe_" + code,
+                            recipe.toString()
+                    )
+                    .apply();
+
+            colorCode.setText(code);
+
+            Toast.makeText(
+                    this,
+                    "تم حفظ التركيبة " +
+                            code +
+                            " ✅",
+                    Toast.LENGTH_LONG
+            ).show();
+
+        } catch (Exception e) {
+
+            Toast.makeText(
+                    this,
+                    "حدث خطأ أثناء حفظ التركيبة",
+                    Toast.LENGTH_SHORT
+            ).show();
+        }
     }
 
     // =====================================================
@@ -142,16 +913,21 @@ public class MainActivity extends AppCompatActivity {
 
     private void calculateAutomatically() {
 
-        String code = colorCode.getText()
-                .toString()
-                .trim();
+        String code =
+                colorCode.getText()
+                        .toString()
+                        .trim();
 
-        String weightText = tankWeight.getText()
-                .toString()
-                .trim();
+        String weightText =
+                tankWeight.getText()
+                        .toString()
+                        .trim();
 
-        // لو إحدى الخانتين فاضية، لا تعمل حساب
-        if (code.isEmpty() || weightText.isEmpty()) {
+        if (
+                code.isEmpty() ||
+                weightText.isEmpty()
+        ) {
+
             return;
         }
 
@@ -159,11 +935,16 @@ public class MainActivity extends AppCompatActivity {
 
         try {
 
-            tank = Double.parseDouble(
-                    weightText.replace(",", ".")
-            );
+            tank =
+                    Double.parseDouble(
+                            weightText.replace(
+                                    ",",
+                                    "."
+                            )
+                    );
 
         } catch (Exception e) {
+
             return;
         }
 
@@ -171,20 +952,26 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        String recipe = preferences.getString(
-                "recipe_" + code,
-                ""
-        );
+        String recipe =
+                preferences.getString(
+                        "recipe_" + code,
+                        ""
+                );
 
-        // تركيبة 557 الافتراضية
-        if (recipe.isEmpty() && code.equals("557")) {
-            recipe = createDefault557();
+        if (
+                recipe.isEmpty() &&
+                code.equals("557")
+        ) {
+
+            recipe =
+                    createDefault557();
         }
 
         if (recipe.isEmpty()) {
 
-            result.setText(
-                    "كود اللون " + code +
+            showMessage(
+                    "كود اللون " +
+                            code +
                             " غير موجود حاليًا"
             );
 
@@ -204,105 +991,29 @@ public class MainActivity extends AppCompatActivity {
 
         } catch (Exception e) {
 
-            result.setText(
+            showMessage(
                     "حدث خطأ في قراءة التركيبة"
             );
         }
     }
 
     // =====================================================
-    // حساب التركيبة بالزر
+    // الحساب بالزر
     // =====================================================
 
     private void calculateRecipe() {
 
-        String code = colorCode.getText()
-                .toString()
-                .trim();
+        calculateAutomatically();
 
-        String weightText = tankWeight.getText()
-                .toString()
-                .trim();
+        if (
+                colorCode.getText()
+                        .toString()
+                        .trim()
+                        .isEmpty()
+        ) {
 
-        if (code.isEmpty()) {
-
-            result.setText(
+            showMessage(
                     "اكتب كود اللون أولًا"
-            );
-
-            return;
-        }
-
-        if (weightText.isEmpty()) {
-
-            result.setText(
-                    "اكتب وزن الحوض أولًا"
-            );
-
-            return;
-        }
-
-        double tank;
-
-        try {
-
-            tank = Double.parseDouble(
-                    weightText.replace(",", ".")
-            );
-
-        } catch (Exception e) {
-
-            result.setText(
-                    "وزن الحوض غير صحيح"
-            );
-
-            return;
-        }
-
-        if (tank <= 0) {
-
-            result.setText(
-                    "وزن الحوض يجب أن يكون أكبر من صفر"
-            );
-
-            return;
-        }
-
-        String recipe = preferences.getString(
-                "recipe_" + code,
-                ""
-        );
-
-        // تركيبة 557 الافتراضية
-        if (recipe.isEmpty() && code.equals("557")) {
-            recipe = createDefault557();
-        }
-
-        if (recipe.isEmpty()) {
-
-            result.setText(
-                    "كود اللون " + code +
-                            " غير موجود حاليًا"
-            );
-
-            return;
-        }
-
-        try {
-
-            JSONArray colors =
-                    new JSONArray(recipe);
-
-            showCalculatedResult(
-                    code,
-                    tank,
-                    colors
-            );
-
-        } catch (Exception e) {
-
-            result.setText(
-                    "حدث خطأ في قراءة التركيبة"
             );
         }
     }
@@ -317,26 +1028,15 @@ public class MainActivity extends AppCompatActivity {
             JSONArray colors
     ) throws Exception {
 
-        LinearLayout container =
-                new LinearLayout(this);
-
-        container.setOrientation(
-                LinearLayout.VERTICAL
-        );
-
-        container.setPadding(
-                20,
-                20,
-                20,
-                20
-        );
+        resultsContainer.removeAllViews();
 
         TextView title =
                 new TextView(this);
 
         title.setText(
                 "النتيجة النهائية\n\n" +
-                        "كود اللون: " + code +
+                        "كود اللون: " +
+                        code +
                         "\n" +
                         "وزن الحوض: " +
                         format(tank) +
@@ -344,10 +1044,6 @@ public class MainActivity extends AppCompatActivity {
         );
 
         title.setTextSize(21);
-
-        title.setTextColor(
-                Color.rgb(30, 30, 30)
-        );
 
         title.setGravity(
                 Gravity.CENTER
@@ -360,7 +1056,9 @@ public class MainActivity extends AppCompatActivity {
                 25
         );
 
-        container.addView(title);
+        resultsContainer.addView(
+                title
+        );
 
         TextView subtitle =
                 new TextView(this);
@@ -382,7 +1080,9 @@ public class MainActivity extends AppCompatActivity {
                 15
         );
 
-        container.addView(subtitle);
+        resultsContainer.addView(
+                subtitle
+        );
 
         for (
                 int i = 0;
@@ -399,37 +1099,48 @@ public class MainActivity extends AppCompatActivity {
             double baseWeight =
                     item.getDouble("weight");
 
-            // ==========================================
-            // الحساب:
-            // التركيبة الأصلية لكل 100 كجم
-            // الكمية المطلوبة = الوزن الأصلي × وزن الحوض ÷ 100
-            // ==========================================
-
             double calculated =
-                    baseWeight * tank / 100.0;
+                    baseWeight *
+                            tank /
+                            100.0;
 
             addColorCard(
-                    container,
+                    resultsContainer,
                     name,
                     calculated
             );
         }
+    }
 
-        // استبدال النتيجة القديمة بالنتيجة الجديدة
-        result.setText("");
+    // =====================================================
+    // رسالة
+    // =====================================================
 
-        ViewGroup parent =
-                (ViewGroup) result.getParent();
+    private void showMessage(
+            String message
+    ) {
 
-        int index =
-                parent.indexOfChild(result);
+        resultsContainer.removeAllViews();
 
-        parent.removeView(result);
+        TextView text =
+                new TextView(this);
 
-        parent.addView(
-                container,
-                index
+        text.setText(message);
+
+        text.setTextSize(18);
+
+        text.setGravity(
+                Gravity.CENTER
         );
+
+        text.setPadding(
+                15,
+                25,
+                15,
+                25
+        );
+
+        resultsContainer.addView(text);
     }
 
     // =====================================================
@@ -475,29 +1186,29 @@ public class MainActivity extends AppCompatActivity {
         nameView.setTextSize(19);
 
         nameView.setTextColor(
-                getTextColor(backgroundColor)
-        );
-
-        nameView.setGravity(
-                Gravity.CENTER_VERTICAL
+                getTextColor(
+                        backgroundColor
+                )
         );
 
         TextView weightView =
                 new TextView(this);
 
         weightView.setText(
-                format(weight) + " جم"
+                format(weight) +
+                        " جم"
         );
 
         weightView.setTextSize(20);
 
         weightView.setTextColor(
-                getTextColor(backgroundColor)
+                getTextColor(
+                        backgroundColor
+                )
         );
 
         weightView.setGravity(
-                Gravity.CENTER_VERTICAL |
-                        Gravity.END
+                Gravity.END
         );
 
         LinearLayout.LayoutParams
@@ -563,9 +1274,11 @@ public class MainActivity extends AppCompatActivity {
                         .toLowerCase(Locale.ROOT)
                         .trim();
 
-        if (name.contains("احمر") ||
-                name.contains("أحمر")) {
-
+        if (
+                name.contains("احمر") ||
+                name.contains("أحمر") ||
+                name.contains("red")
+        ) {
             return Color.rgb(
                     220,
                     50,
@@ -573,10 +1286,11 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("اصفر") ||
+        if (
+                name.contains("اصفر") ||
                 name.contains("أصفر") ||
-                name.contains("yellow")) {
-
+                name.contains("yellow")
+        ) {
             return Color.rgb(
                     245,
                     205,
@@ -584,10 +1298,11 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("اخضر") ||
+        if (
+                name.contains("اخضر") ||
                 name.contains("أخضر") ||
-                name.contains("green")) {
-
+                name.contains("green")
+        ) {
             return Color.rgb(
                     45,
                     170,
@@ -595,10 +1310,11 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("ازرق") ||
+        if (
+                name.contains("ازرق") ||
                 name.contains("أزرق") ||
-                name.contains("blue")) {
-
+                name.contains("blue")
+        ) {
             return Color.rgb(
                     45,
                     100,
@@ -606,9 +1322,10 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("تركواز") ||
-                name.contains("turquoise")) {
-
+        if (
+                name.contains("تركواز") ||
+                name.contains("turquoise")
+        ) {
             return Color.rgb(
                     40,
                     190,
@@ -616,9 +1333,10 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("بني") ||
-                name.contains("brown")) {
-
+        if (
+                name.contains("بني") ||
+                name.contains("brown")
+        ) {
             return Color.rgb(
                     125,
                     75,
@@ -626,9 +1344,10 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("بيج") ||
-                name.contains("beige")) {
-
+        if (
+                name.contains("بيج") ||
+                name.contains("beige")
+        ) {
             return Color.rgb(
                     210,
                     190,
@@ -636,10 +1355,11 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("اسود") ||
+        if (
+                name.contains("اسود") ||
                 name.contains("أسود") ||
-                name.contains("black")) {
-
+                name.contains("black")
+        ) {
             return Color.rgb(
                     35,
                     35,
@@ -647,10 +1367,11 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("ابيض") ||
+        if (
+                name.contains("ابيض") ||
                 name.contains("أبيض") ||
-                name.contains("white")) {
-
+                name.contains("white")
+        ) {
             return Color.rgb(
                     235,
                     235,
@@ -658,10 +1379,11 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("موف") ||
+        if (
+                name.contains("موف") ||
                 name.contains("mauve") ||
-                name.contains("purple")) {
-
+                name.contains("purple")
+        ) {
             return Color.rgb(
                     145,
                     75,
@@ -669,9 +1391,10 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("فوشيا") ||
-                name.contains("fuchsia")) {
-
+        if (
+                name.contains("فوشيا") ||
+                name.contains("fuchsia")
+        ) {
             return Color.rgb(
                     220,
                     50,
@@ -679,9 +1402,10 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("وردي") ||
-                name.contains("pink")) {
-
+        if (
+                name.contains("وردي") ||
+                name.contains("pink")
+        ) {
             return Color.rgb(
                     235,
                     120,
@@ -689,9 +1413,10 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("برتقالي") ||
-                name.contains("orange")) {
-
+        if (
+                name.contains("برتقالي") ||
+                name.contains("orange")
+        ) {
             return Color.rgb(
                     240,
                     125,
@@ -699,11 +1424,12 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("رمادي") ||
+        if (
+                name.contains("رمادي") ||
                 name.contains("رصاصي") ||
                 name.contains("grey") ||
-                name.contains("gray")) {
-
+                name.contains("gray")
+        ) {
             return Color.rgb(
                     125,
                     125,
@@ -711,9 +1437,10 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("كحلي") ||
-                name.contains("navy")) {
-
+        if (
+                name.contains("كحلي") ||
+                name.contains("navy")
+        ) {
             return Color.rgb(
                     35,
                     55,
@@ -721,9 +1448,10 @@ public class MainActivity extends AppCompatActivity {
             );
         }
 
-        if (name.contains("زيتي") ||
-                name.contains("olive")) {
-
+        if (
+                name.contains("زيتي") ||
+                name.contains("olive")
+        ) {
             return Color.rgb(
                     105,
                     115,
@@ -739,7 +1467,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // =====================================================
-    // لون الكتابة
+    // لون النص
     // =====================================================
 
     private int getTextColor(
@@ -760,18 +1488,13 @@ public class MainActivity extends AppCompatActivity {
                 (green * 0.587) +
                 (blue * 0.114);
 
-        if (brightness > 170) {
-
-            return Color.BLACK;
-
-        } else {
-
-            return Color.WHITE;
-        }
+        return brightness > 170
+                ? Color.BLACK
+                : Color.WHITE;
     }
 
     // =====================================================
-    // إضافة تركيبة
+    // إضافة تركيبة يدويًا
     // =====================================================
 
     private void showAddRecipeDialog() {
@@ -811,7 +1534,11 @@ public class MainActivity extends AppCompatActivity {
         EditText[] weights =
                 new EditText[4];
 
-        for (int i = 0; i < 4; i++) {
+        for (
+                int i = 0;
+                i < 4;
+                i++
+        ) {
 
             TextView number =
                     new TextView(this);
@@ -903,9 +1630,7 @@ public class MainActivity extends AppCompatActivity {
                     weightParams
             );
 
-            mainLayout.addView(
-                    row
-            );
+            mainLayout.addView(row);
         }
 
         new AlertDialog.Builder(this)
@@ -922,146 +1647,11 @@ public class MainActivity extends AppCompatActivity {
                         "حفظ",
                         (dialog, which) -> {
 
-                            String code =
-                                    codeInput
-                                            .getText()
-                                            .toString()
-                                            .trim();
-
-                            if (code.isEmpty()) {
-
-                                Toast.makeText(
-                                        this,
-                                        "اكتب كود اللون",
-                                        Toast.LENGTH_SHORT
-                                ).show();
-
-                                return;
-                            }
-
-                            try {
-
-                                JSONArray recipe =
-                                        new JSONArray();
-
-                                for (
-                                        int i = 0;
-                                        i < 4;
-                                        i++
-                                ) {
-
-                                    String name =
-                                            names[i]
-                                                    .getText()
-                                                    .toString()
-                                                    .trim();
-
-                                    String weightText =
-                                            weights[i]
-                                                    .getText()
-                                                    .toString()
-                                                    .trim();
-
-                                    if (
-                                            name.isEmpty()
-                                                    &&
-                                            weightText.isEmpty()
-                                    ) {
-
-                                        continue;
-                                    }
-
-                                    if (
-                                            name.isEmpty()
-                                                    ||
-                                            weightText.isEmpty()
-                                    ) {
-
-                                        Toast.makeText(
-                                                this,
-                                                "أكمل بيانات الصبغة رقم " +
-                                                        (i + 1),
-                                                Toast.LENGTH_SHORT
-                                        ).show();
-
-                                        return;
-                                    }
-
-                                    double weight =
-                                            Double.parseDouble(
-                                                    weightText
-                                                            .replace(
-                                                                    ",",
-                                                                    "."
-                                                            )
-                                            );
-
-                                    if (weight < 0) {
-
-                                        Toast.makeText(
-                                                this,
-                                                "الوزن غير صحيح",
-                                                Toast.LENGTH_SHORT
-                                        ).show();
-
-                                        return;
-                                    }
-
-                                    JSONObject item =
-                                            new JSONObject();
-
-                                    item.put(
-                                            "name",
-                                            name
-                                    );
-
-                                    item.put(
-                                            "weight",
-                                            weight
-                                    );
-
-                                    recipe.put(
-                                            item
-                                    );
-                                }
-
-                                if (
-                                        recipe.length()
-                                                == 0
-                                ) {
-
-                                    Toast.makeText(
-                                            this,
-                                            "أضف صبغة واحدة على الأقل",
-                                            Toast.LENGTH_SHORT
-                                    ).show();
-
-                                    return;
-                                }
-
-                                preferences.edit()
-                                        .putString(
-                                                "recipe_" + code,
-                                                recipe.toString()
-                                        )
-                                        .apply();
-
-                                Toast.makeText(
-                                        this,
-                                        "تم حفظ التركيبة " +
-                                                code +
-                                                " ✅",
-                                        Toast.LENGTH_SHORT
-                                ).show();
-
-                            } catch (Exception e) {
-
-                                Toast.makeText(
-                                        this,
-                                        "حدث خطأ أثناء حفظ التركيبة",
-                                        Toast.LENGTH_SHORT
-                                ).show();
-                            }
+                            saveManualRecipe(
+                                    codeInput,
+                                    names,
+                                    weights
+                            );
                         }
                 )
 
@@ -1074,14 +1664,144 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // =====================================================
+    // حفظ يدوي
+    // =====================================================
+
+    private void saveManualRecipe(
+            EditText codeInput,
+            EditText[] names,
+            EditText[] weights
+    ) {
+
+        String code =
+                codeInput.getText()
+                        .toString()
+                        .trim();
+
+        if (code.isEmpty()) {
+
+            Toast.makeText(
+                    this,
+                    "اكتب كود اللون",
+                    Toast.LENGTH_SHORT
+            ).show();
+
+            return;
+        }
+
+        try {
+
+            JSONArray recipe =
+                    new JSONArray();
+
+            for (
+                    int i = 0;
+                    i < 4;
+                    i++
+            ) {
+
+                String name =
+                        names[i].getText()
+                                .toString()
+                                .trim();
+
+                String weightText =
+                        weights[i].getText()
+                                .toString()
+                                .trim();
+
+                if (
+                        name.isEmpty() &&
+                        weightText.isEmpty()
+                ) {
+                    continue;
+                }
+
+                if (
+                        name.isEmpty() ||
+                        weightText.isEmpty()
+                ) {
+
+                    Toast.makeText(
+                            this,
+                            "أكمل بيانات الصبغة رقم " +
+                                    (i + 1),
+                            Toast.LENGTH_SHORT
+                    ).show();
+
+                    return;
+                }
+
+                double weight =
+                        Double.parseDouble(
+                                weightText.replace(
+                                        ",",
+                                        "."
+                                )
+                        );
+
+                JSONObject item =
+                        new JSONObject();
+
+                item.put(
+                        "name",
+                        name
+                );
+
+                item.put(
+                        "weight",
+                        weight
+                );
+
+                recipe.put(item);
+            }
+
+            if (recipe.length() == 0) {
+
+                Toast.makeText(
+                        this,
+                        "أضف صبغة واحدة على الأقل",
+                        Toast.LENGTH_SHORT
+                ).show();
+
+                return;
+            }
+
+            preferences.edit()
+                    .putString(
+                            "recipe_" + code,
+                            recipe.toString()
+                    )
+                    .apply();
+
+            Toast.makeText(
+                    this,
+                    "تم حفظ التركيبة " +
+                            code +
+                            " ✅",
+                    Toast.LENGTH_SHORT
+            ).show();
+
+            colorCode.setText(code);
+
+        } catch (Exception e) {
+
+            Toast.makeText(
+                    this,
+                    "حدث خطأ أثناء الحفظ",
+                    Toast.LENGTH_SHORT
+            ).show();
+        }
+    }
+
+    // =====================================================
     // حفظ التركيبة الحالية
     // =====================================================
 
     private void saveCurrentRecipe() {
 
         String code =
-                colorCode
-                        .getText()
+                colorCode.getText()
                         .toString()
                         .trim();
 
@@ -1103,18 +1823,14 @@ public class MainActivity extends AppCompatActivity {
                 );
 
         if (
-                recipe.isEmpty()
-                        &&
+                recipe.isEmpty() &&
                 code.equals("557")
         ) {
-
-            recipe =
-                    createDefault557();
 
             preferences.edit()
                     .putString(
                             "recipe_557",
-                            recipe
+                            createDefault557()
                     )
                     .apply();
 
@@ -1149,14 +1865,13 @@ public class MainActivity extends AppCompatActivity {
     private void searchRecipe() {
 
         String code =
-                colorCode
-                        .getText()
+                colorCode.getText()
                         .toString()
                         .trim();
 
         if (code.isEmpty()) {
 
-            result.setText(
+            showMessage(
                     "اكتب كود اللون للبحث"
             );
 
@@ -1170,8 +1885,7 @@ public class MainActivity extends AppCompatActivity {
                 );
 
         if (
-                recipe.isEmpty()
-                        &&
+                recipe.isEmpty() &&
                 code.equals("557")
         ) {
 
@@ -1181,7 +1895,7 @@ public class MainActivity extends AppCompatActivity {
 
         if (recipe.isEmpty()) {
 
-            result.setText(
+            showMessage(
                     "لم يتم العثور على التركيبة"
             );
 
@@ -1238,20 +1952,20 @@ public class MainActivity extends AppCompatActivity {
                 );
             }
 
-            result.setText(
+            showMessage(
                     text.toString()
             );
 
         } catch (Exception e) {
 
-            result.setText(
+            showMessage(
                     "حدث خطأ في قراءة التركيبة"
             );
         }
     }
 
     // =====================================================
-    // التركيبة الافتراضية 557
+    // تركيبة 557
     // =====================================================
 
     private String createDefault557() {
@@ -1274,9 +1988,7 @@ public class MainActivity extends AppCompatActivity {
                     150
             );
 
-            recipe.put(
-                    beige
-            );
+            recipe.put(beige);
 
             JSONObject brown =
                     new JSONObject();
@@ -1291,9 +2003,7 @@ public class MainActivity extends AppCompatActivity {
                     50
             );
 
-            recipe.put(
-                    brown
-            );
+            recipe.put(brown);
 
             JSONObject yellow =
                     new JSONObject();
@@ -1308,9 +2018,7 @@ public class MainActivity extends AppCompatActivity {
                     3.8
             );
 
-            recipe.put(
-                    yellow
-            );
+            recipe.put(yellow);
 
             return recipe.toString();
 
@@ -1321,7 +2029,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     // =====================================================
-    // تنسيق الأرقام
+    // تنسيق الرقم
     // =====================================================
 
     private String format(
@@ -1346,4 +2054,4 @@ public class MainActivity extends AppCompatActivity {
                 number
         );
     }
-    }
+            }
