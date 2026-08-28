@@ -3,7 +3,9 @@
 
     <application
         android:allowBackup="true"
-        android:label="Saratoga"
+        android:icon="@drawable/saratoga"
+        android:label="سارتوجا"
+        android:roundIcon="@drawable/saratoga"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar">
 
