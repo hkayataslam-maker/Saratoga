@@ -2,7 +2,11 @@ package com.saratoga.dyecalculator;
 
 import android.app.AlertDialog;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.os.Bundle;
+import android.text.InputType;
+import android.view.Gravity;
+import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -10,6 +14,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -39,7 +48,7 @@ public class MainActivity extends AppCompatActivity {
         preferences = getSharedPreferences("SaratogaRecipes", MODE_PRIVATE);
 
         calculateButton.setOnClickListener(v -> calculateRecipe());
-        saveButton.setOnClickListener(v -> saveRecipe());
+        saveButton.setOnClickListener(v -> saveCurrentRecipe());
         searchButton.setOnClickListener(v -> searchRecipe());
         addRecipeButton.setOnClickListener(v -> showAddRecipeDialog());
     }
@@ -49,246 +58,587 @@ public class MainActivity extends AppCompatActivity {
         String code = colorCode.getText().toString().trim();
         String weightText = tankWeight.getText().toString().trim();
 
-        if (code.isEmpty() || weightText.isEmpty()) {
-            result.setText("من فضلك اكتب كود اللون ووزن الحوض");
+        if (code.isEmpty()) {
+            result.setText("اكتب كود اللون أولًا");
             return;
         }
 
-        double weight;
+        if (weightText.isEmpty()) {
+            result.setText("اكتب وزن الحوض أولًا");
+            return;
+        }
+
+        double tank;
 
         try {
-            weight = Double.parseDouble(weightText);
+            tank = Double.parseDouble(
+                    weightText.replace(",", ".")
+            );
         } catch (Exception e) {
             result.setText("وزن الحوض غير صحيح");
             return;
         }
 
-        if (weight <= 0) {
-            result.setText("وزن الحوض لازم يكون أكبر من صفر");
+        if (tank <= 0) {
+            result.setText("وزن الحوض يجب أن يكون أكبر من صفر");
             return;
         }
 
         String recipe = preferences.getString("recipe_" + code, "");
 
         if (recipe.isEmpty() && code.equals("557")) {
-            recipe =
-                    "بيج: 150\n" +
-                    "بني محروق: 50\n" +
-                    "أصفر: 3.8";
+            recipe = createDefault557();
         }
 
         if (recipe.isEmpty()) {
-            result.setText("كود اللون غير موجود حاليًا");
+            result.setText("لم يتم العثور على التركيبة " + code);
             return;
         }
 
-        String[] lines = recipe.split("\\n");
+        try {
 
-        StringBuilder output = new StringBuilder();
+            JSONArray colors = new JSONArray(recipe);
 
-        output.append("كود اللون: ")
-                .append(code)
-                .append("\n");
+            showCalculatedResult(code, tank, colors);
 
-        output.append("وزن الحوض: ")
-                .append(format(weight))
-                .append(" كجم\n\n");
+        } catch (Exception e) {
 
-        output.append("الكميات المطلوبة:\n\n");
+            result.setText("حدث خطأ في قراءة التركيبة");
 
-        boolean found = false;
-
-        for (String line : lines) {
-
-            line = line.trim();
-
-            if (line.isEmpty()) {
-                continue;
-            }
-
-            String[] parts = line.split(":", 2);
-
-            if (parts.length < 2) {
-                continue;
-            }
-
-            String dyeName = parts[0].trim();
-
-            String amountText = parts[1]
-                    .replace("جم", "")
-                    .replace("/ 100 كجم", "")
-                    .replace("/100 كجم", "")
-                    .trim();
-
-            try {
-
-                double amountPer100Kg =
-                        Double.parseDouble(amountText);
-
-                double requiredAmount =
-                        amountPer100Kg * weight / 100.0;
-
-                output.append(dyeName)
-                        .append(": ")
-                        .append(format(requiredAmount))
-                        .append(" جم\n");
-
-                found = true;
-
-            } catch (NumberFormatException e) {
-                // تجاهل السطر غير الصحيح
-            }
         }
-
-        if (!found) {
-            result.setText(
-                    "صيغة التركيبة غير صحيحة.\n\n" +
-                    "مثال صحيح:\n" +
-                    "بيج: 150\n" +
-                    "بني محروق: 50\n" +
-                    "أصفر: 3.8"
-            );
-            return;
-        }
-
-        result.setText(output.toString());
     }
 
-    private void saveRecipe() {
+    private void showCalculatedResult(
+            String code,
+            double tank,
+            JSONArray colors
+    ) throws Exception {
 
-        String code = colorCode.getText().toString().trim();
+        LinearLayout container = new LinearLayout(this);
+
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setPadding(20, 20, 20, 20);
+
+        TextView title = new TextView(this);
+
+        title.setText(
+                "تركيبة اللون " + code +
+                "\nوزن الحوض: " + format(tank) + " كجم"
+        );
+
+        title.setTextSize(21);
+        title.setTextColor(Color.rgb(20, 20, 20));
+        title.setGravity(Gravity.CENTER);
+        title.setPadding(10, 10, 10, 25);
+
+        container.addView(title);
+
+        for (int i = 0; i < colors.length(); i++) {
+
+            JSONObject item = colors.getJSONObject(i);
+
+            String name = item.getString("name");
+            double baseWeight = item.getDouble("weight");
+
+            double calculated =
+                    baseWeight * tank / 100.0;
+
+            addColorCard(
+                    container,
+                    name,
+                    calculated,
+                    i
+            );
+        }
+
+        result.setText("");
+
+        if (result.getParent() instanceof android.view.ViewGroup) {
+            android.view.ViewGroup parent =
+                    (android.view.ViewGroup) result.getParent();
+
+            int index = parent.indexOfChild(result);
+
+            parent.removeView(result);
+
+            parent.addView(
+                    container,
+                    index
+            );
+        }
+    }
+
+    private void addColorCard(
+            LinearLayout container,
+            String name,
+            double weight,
+            int index
+    ) {
+
+        LinearLayout card = new LinearLayout(this);
+
+        card.setOrientation(LinearLayout.HORIZONTAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(20, 18, 20, 18);
+
+        int[] colors = {
+                Color.rgb(222, 222, 222),
+                Color.rgb(120, 72, 35),
+                Color.rgb(245, 210, 40),
+                Color.rgb(180, 40, 80)
+        };
+
+        card.setBackgroundColor(
+                colors[index % colors.length]
+        );
+
+        TextView nameView = new TextView(this);
+
+        nameView.setText(name);
+        nameView.setTextSize(19);
+        nameView.setTextColor(Color.WHITE);
+
+        TextView weightView = new TextView(this);
+
+        weightView.setText(
+                format(weight) + " جم"
+        );
+
+        weightView.setTextSize(20);
+        weightView.setTextColor(Color.WHITE);
+        weightView.setGravity(Gravity.END);
+
+        LinearLayout.LayoutParams nameParams =
+                new LinearLayout.LayoutParams(
+                        0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        1
+                );
+
+        LinearLayout.LayoutParams weightParams =
+                new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                );
+
+        card.addView(nameView, nameParams);
+        card.addView(weightView, weightParams);
+
+        LinearLayout.LayoutParams cardParams =
+                new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                );
+
+        cardParams.setMargins(0, 0, 0, 12);
+
+        container.addView(card, cardParams);
+    }
+
+    private void showAddRecipeDialog() {
+
+        LinearLayout mainLayout = new LinearLayout(this);
+
+        mainLayout.setOrientation(LinearLayout.VERTICAL);
+        mainLayout.setPadding(35, 10, 35, 10);
+
+        EditText codeInput = new EditText(this);
+
+        codeInput.setHint("كود اللون");
+        codeInput.setInputType(InputType.TYPE_CLASS_NUMBER);
+
+        mainLayout.addView(codeInput);
+
+        EditText[] names = new EditText[4];
+        EditText[] weights = new EditText[4];
+
+        for (int i = 0; i < 4; i++) {
+
+            TextView number = new TextView(this);
+
+            number.setText(
+                    "الصبغة رقم " + (i + 1)
+            );
+
+            number.setTextSize(17);
+            number.setPadding(0, 15, 0, 5);
+
+            mainLayout.addView(number);
+
+            LinearLayout row = new LinearLayout(this);
+
+            row.setOrientation(LinearLayout.HORIZONTAL);
+
+            names[i] = new EditText(this);
+            names[i].setHint("اسم الصبغة");
+            names[i].setSingleLine(true);
+
+            weights[i] = new EditText(this);
+            weights[i].setHint("الوزن / 100 كجم");
+            weights[i].setInputType(
+                    InputType.TYPE_CLASS_NUMBER |
+                    InputType.TYPE_NUMBER_FLAG_DECIMAL
+            );
+            weights[i].setSingleLine(true);
+
+            LinearLayout.LayoutParams nameParams =
+                    new LinearLayout.LayoutParams(
+                            0,
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            1
+                    );
+
+            nameParams.setMargins(0, 0, 10, 0);
+
+            LinearLayout.LayoutParams weightParams =
+                    new LinearLayout.LayoutParams(
+                            0,
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            1
+                    );
+
+            row.addView(names[i], nameParams);
+            row.addView(weights[i], weightParams);
+
+            mainLayout.addView(row);
+        }
+
+        new AlertDialog.Builder(this)
+                .setTitle("إضافة تركيبة جديدة")
+                .setView(mainLayout)
+                .setPositiveButton(
+                        "حفظ",
+                        (dialog, which) -> {
+
+                            String code =
+                                    codeInput.getText()
+                                            .toString()
+                                            .trim();
+
+                            if (code.isEmpty()) {
+
+                                Toast.makeText(
+                                        this,
+                                        "اكتب كود اللون",
+                                        Toast.LENGTH_SHORT
+                                ).show();
+
+                                return;
+                            }
+
+                            try {
+
+                                JSONArray recipe =
+                                        new JSONArray();
+
+                                for (int i = 0; i < 4; i++) {
+
+                                    String name =
+                                            names[i].getText()
+                                                    .toString()
+                                                    .trim();
+
+                                    String weightText =
+                                            weights[i].getText()
+                                                    .toString()
+                                                    .trim();
+
+                                    if (name.isEmpty() &&
+                                            weightText.isEmpty()) {
+                                        continue;
+                                    }
+
+                                    if (name.isEmpty() ||
+                                            weightText.isEmpty()) {
+
+                                        Toast.makeText(
+                                                this,
+                                                "أكمل بيانات الصبغة رقم " +
+                                                        (i + 1),
+                                                Toast.LENGTH_SHORT
+                                        ).show();
+
+                                        return;
+                                    }
+
+                                    double weight =
+                                            Double.parseDouble(
+                                                    weightText.replace(
+                                                            ",",
+                                                            "."
+                                                    )
+                                            );
+
+                                    JSONObject item =
+                                            new JSONObject();
+
+                                    item.put("name", name);
+                                    item.put("weight", weight);
+
+                                    recipe.put(item);
+                                }
+
+                                if (recipe.length() == 0) {
+
+                                    Toast.makeText(
+                                            this,
+                                            "أضف صبغة واحدة على الأقل",
+                                            Toast.LENGTH_SHORT
+                                    ).show();
+
+                                    return;
+                                }
+
+                                preferences.edit()
+                                        .putString(
+                                                "recipe_" + code,
+                                                recipe.toString()
+                                        )
+                                        .apply();
+
+                                Toast.makeText(
+                                        this,
+                                        "تم حفظ التركيبة " +
+                                                code +
+                                                " ✅",
+                                        Toast.LENGTH_SHORT
+                                ).show();
+
+                            } catch (Exception e) {
+
+                                Toast.makeText(
+                                        this,
+                                        "حدث خطأ أثناء حفظ التركيبة",
+                                        Toast.LENGTH_SHORT
+                                ).show();
+                            }
+                        }
+                )
+                .setNegativeButton(
+                        "إلغاء",
+                        null
+                )
+                .show();
+    }
+
+    private void saveCurrentRecipe() {
+
+        String code =
+                colorCode.getText()
+                        .toString()
+                        .trim();
 
         if (code.isEmpty()) {
+
             Toast.makeText(
                     this,
                     "اكتب كود اللون أولًا",
                     Toast.LENGTH_SHORT
             ).show();
+
             return;
         }
 
-        if (!code.equals("557")) {
+        String recipe =
+                preferences.getString(
+                        "recipe_" + code,
+                        ""
+                );
+
+        if (recipe.isEmpty() && code.equals("557")) {
+
+            recipe = createDefault557();
+
+            preferences.edit()
+                    .putString(
+                            "recipe_557",
+                            recipe
+                    )
+                    .apply();
+
             Toast.makeText(
                     this,
-                    "استخدم زر إضافة تركيبة جديدة لإضافة كود جديد",
+                    "تم حفظ تركيبة 557 ✅",
                     Toast.LENGTH_SHORT
             ).show();
-            return;
+
+        } else if (!recipe.isEmpty()) {
+
+            Toast.makeText(
+                    this,
+                    "التركيبة محفوظة بالفعل ✅",
+                    Toast.LENGTH_SHORT
+            ).show();
+
+        } else {
+
+            Toast.makeText(
+                    this,
+                    "التركيبة غير موجودة",
+                    Toast.LENGTH_SHORT
+            ).show();
         }
-
-        preferences.edit()
-                .putString(
-                        "recipe_557",
-                        "بيج: 150\n" +
-                        "بني محروق: 50\n" +
-                        "أصفر: 3.8"
-                )
-                .apply();
-
-        Toast.makeText(
-                this,
-                "تم حفظ تركيبة 557 بنجاح ✅",
-                Toast.LENGTH_SHORT
-        ).show();
     }
 
     private void searchRecipe() {
 
-        String code = colorCode.getText().toString().trim();
+        String code =
+                colorCode.getText()
+                        .toString()
+                        .trim();
 
         if (code.isEmpty()) {
-            result.setText("اكتب كود اللون للبحث");
+
+            result.setText(
+                    "اكتب كود اللون للبحث"
+            );
+
             return;
         }
 
-        String recipe = preferences.getString(
-                "recipe_" + code,
-                ""
-        );
+        String recipe =
+                preferences.getString(
+                        "recipe_" + code,
+                        ""
+                );
 
-        if (recipe.isEmpty() && code.equals("557")) {
-            recipe =
-                    "بيج: 150\n" +
-                    "بني محروق: 50\n" +
-                    "أصفر: 3.8";
+        if (recipe.isEmpty() &&
+                code.equals("557")) {
+
+            recipe = createDefault557();
         }
 
-        if (!recipe.isEmpty()) {
+        if (recipe.isEmpty()) {
 
             result.setText(
-                    "🔍 التركيبة المحفوظة\n\n" +
-                    "كود اللون: " + code + "\n\n" +
-                    recipe
+                    "لم يتم العثور على التركيبة"
             );
 
-        } else {
+            return;
+        }
 
-            result.setText("لم يتم العثور على التركيبة");
+        try {
+
+            JSONArray array =
+                    new JSONArray(recipe);
+
+            StringBuilder text =
+                    new StringBuilder();
+
+            text.append(
+                    "التركيبة المحفوظة\n\n"
+            );
+
+            text.append(
+                    "كود اللون: "
+            );
+
+            text.append(code);
+
+            text.append("\n\n");
+
+            for (int i = 0; i < array.length(); i++) {
+
+                JSONObject item =
+                        array.getJSONObject(i);
+
+                text.append(
+                        item.getString("name")
+                );
+
+                text.append(" : ");
+
+                text.append(
+                        format(
+                                item.getDouble("weight")
+                        )
+                );
+
+                text.append(
+                        " جم / 100 كجم\n"
+                );
+            }
+
+            result.setText(
+                    text.toString()
+            );
+
+        } catch (Exception e) {
+
+            result.setText(
+                    "حدث خطأ في قراءة التركيبة"
+            );
         }
     }
 
-    private void showAddRecipeDialog() {
+    private String createDefault557() {
 
-        LinearLayout layout = new LinearLayout(this);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(40, 20, 40, 10);
+        try {
 
-        EditText codeInput = new EditText(this);
-        codeInput.setHint("كود اللون");
-        codeInput.setInputType(2);
+            JSONArray recipe =
+                    new JSONArray();
 
-        EditText recipeInput = new EditText(this);
-        recipeInput.setHint(
-                "اكتب الصبغات كل واحدة في سطر\n\n" +
-                "مثال:\n" +
-                "بيج: 150\n" +
-                "بني محروق: 50\n" +
-                "أصفر: 3.8"
-        );
+            JSONObject beige =
+                    new JSONObject();
 
-        recipeInput.setMinLines(6);
-        recipeInput.setGravity(48);
+            beige.put("name", "بيج");
+            beige.put("weight", 150);
 
-        layout.addView(codeInput);
-        layout.addView(recipeInput);
+            recipe.put(beige);
 
-        new AlertDialog.Builder(this)
-                .setTitle("➕ إضافة تركيبة جديدة")
-                .setView(layout)
-                .setPositiveButton("حفظ", (dialog, which) -> {
+            JSONObject brown =
+                    new JSONObject();
 
-                    String code =
-                            codeInput.getText().toString().trim();
+            brown.put(
+                    "name",
+                    "بني محروق"
+            );
 
-                    String recipe =
-                            recipeInput.getText().toString().trim();
+            brown.put(
+                    "weight",
+                    50
+            );
 
-                    if (code.isEmpty() || recipe.isEmpty()) {
+            recipe.put(brown);
 
-                        Toast.makeText(
-                                this,
-                                "اكتب الكود والتركيبة",
-                                Toast.LENGTH_SHORT
-                        ).show();
+            JSONObject yellow =
+                    new JSONObject();
 
-                        return;
-                    }
+            yellow.put(
+                    "name",
+                    "أصفر GL"
+            );
 
-                    preferences.edit()
-                            .putString("recipe_" + code, recipe)
-                            .apply();
+            yellow.put(
+                    "weight",
+                    3.8
+            );
 
-                    Toast.makeText(
-                            this,
-                            "تم حفظ التركيبة " + code + " ✅",
-                            Toast.LENGTH_SHORT
-                    ).show();
-                })
-                .setNegativeButton("إلغاء", null)
-                .show();
+            recipe.put(yellow);
+
+            return recipe.toString();
+
+        } catch (Exception e) {
+
+            return "";
+        }
     }
 
     private String format(double number) {
-        return String.format("%.2f", number);
+
+        if (number == (long) number) {
+
+            return String.format(
+                    Locale.US,
+                    "%d",
+                    (long) number
+            );
+        }
+
+        return String.format(
+                Locale.US,
+                "%.2f",
+                number
+        );
     }
-    }
+            }
