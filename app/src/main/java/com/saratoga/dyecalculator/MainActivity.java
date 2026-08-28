@@ -63,38 +63,95 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        if (code.equals("557")) {
+        if (weight <= 0) {
+            result.setText("وزن الحوض لازم يكون أكبر من صفر");
+            return;
+        }
 
-            double beige = 150 * weight / 100;
-            double burntBrown = 50 * weight / 100;
-            double yellow = 3.8 * weight / 100;
+        String recipe = preferences.getString("recipe_" + code, "");
 
-            result.setText(
-                    "كود اللون: 557\n" +
-                    "وزن الحوض: " + weight + " كجم\n\n" +
-                    "التركيبة:\n\n" +
-                    "بيج: " + format(beige) + " جم\n" +
-                    "بني محروق: " + format(burntBrown) + " جم\n" +
-                    "أصفر: " + format(yellow) + " جم"
-            );
+        if (recipe.isEmpty() && code.equals("557")) {
+            recipe =
+                    "بيج: 150\n" +
+                    "بني محروق: 50\n" +
+                    "أصفر: 3.8";
+        }
 
-        } else {
+        if (recipe.isEmpty()) {
+            result.setText("كود اللون غير موجود حاليًا");
+            return;
+        }
 
-            String savedRecipe =
-                    preferences.getString("recipe_" + code, "");
+        String[] lines = recipe.split("\\n");
 
-            if (!savedRecipe.isEmpty()) {
+        StringBuilder output = new StringBuilder();
 
-                result.setText(
-                        "كود اللون: " + code +
-                        "\nوزن الحوض: " + weight + " كجم\n\n" +
-                        savedRecipe
-                );
+        output.append("كود اللون: ")
+                .append(code)
+                .append("\n");
 
-            } else {
-                result.setText("كود اللون غير موجود حاليًا");
+        output.append("وزن الحوض: ")
+                .append(format(weight))
+                .append(" كجم\n\n");
+
+        output.append("الكميات المطلوبة:\n\n");
+
+        boolean found = false;
+
+        for (String line : lines) {
+
+            line = line.trim();
+
+            if (line.isEmpty()) {
+                continue;
+            }
+
+            String[] parts = line.split(":", 2);
+
+            if (parts.length < 2) {
+                continue;
+            }
+
+            String dyeName = parts[0].trim();
+
+            String amountText = parts[1]
+                    .replace("جم", "")
+                    .replace("/ 100 كجم", "")
+                    .replace("/100 كجم", "")
+                    .trim();
+
+            try {
+
+                double amountPer100Kg =
+                        Double.parseDouble(amountText);
+
+                double requiredAmount =
+                        amountPer100Kg * weight / 100.0;
+
+                output.append(dyeName)
+                        .append(": ")
+                        .append(format(requiredAmount))
+                        .append(" جم\n");
+
+                found = true;
+
+            } catch (NumberFormatException e) {
+                // تجاهل السطر غير الصحيح
             }
         }
+
+        if (!found) {
+            result.setText(
+                    "صيغة التركيبة غير صحيحة.\n\n" +
+                    "مثال صحيح:\n" +
+                    "بيج: 150\n" +
+                    "بني محروق: 50\n" +
+                    "أصفر: 3.8"
+            );
+            return;
+        }
+
+        result.setText(output.toString());
     }
 
     private void saveRecipe() {
@@ -120,11 +177,12 @@ public class MainActivity extends AppCompatActivity {
         }
 
         preferences.edit()
-                .putString("code_557", "557")
-                .putString("recipe_557",
-                        "بيج: 150 جم / 100 كجم\n" +
-                        "بني محروق: 50 جم / 100 كجم\n" +
-                        "أصفر: 3.8 جم / 100 كجم")
+                .putString(
+                        "recipe_557",
+                        "بيج: 150\n" +
+                        "بني محروق: 50\n" +
+                        "أصفر: 3.8"
+                )
                 .apply();
 
         Toast.makeText(
@@ -148,6 +206,13 @@ public class MainActivity extends AppCompatActivity {
                 ""
         );
 
+        if (recipe.isEmpty() && code.equals("557")) {
+            recipe =
+                    "بيج: 150\n" +
+                    "بني محروق: 50\n" +
+                    "أصفر: 3.8";
+        }
+
         if (!recipe.isEmpty()) {
 
             result.setText(
@@ -156,19 +221,9 @@ public class MainActivity extends AppCompatActivity {
                     recipe
             );
 
-        } else if (code.equals("557")) {
-
-            result.setText(
-                    "🔍 تركيبة 557\n\n" +
-                    "بيج: 150 جم / 100 كجم\n" +
-                    "بني محروق: 50 جم / 100 كجم\n" +
-                    "أصفر: 3.8 جم / 100 كجم"
-            );
-
         } else {
 
             result.setText("لم يتم العثور على التركيبة");
-
         }
     }
 
@@ -190,6 +245,7 @@ public class MainActivity extends AppCompatActivity {
                 "بني محروق: 50\n" +
                 "أصفر: 3.8"
         );
+
         recipeInput.setMinLines(6);
         recipeInput.setGravity(48);
 
@@ -235,4 +291,4 @@ public class MainActivity extends AppCompatActivity {
     private String format(double number) {
         return String.format("%.2f", number);
     }
-            }
+    }
